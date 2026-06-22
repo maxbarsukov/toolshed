@@ -7,6 +7,7 @@ Editors and patchers for game save files.
 | Folder | Game | Notes |
 |---|---|---|
 | [`cell-to-singularity/`](./cell-to-singularity/) | Cell to Singularity — Evolution Never Ends | Edits in-game currencies in the local save. |
+| [`vampire-survivors/`](./vampire-survivors/) | Vampire Survivors | Single HTML file editor for the JSON SaveData. |
 
 ## General warnings
 

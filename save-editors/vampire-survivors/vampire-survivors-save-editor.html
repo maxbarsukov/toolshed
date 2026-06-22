@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vampire Survivors - Save Editor</title>
+    <meta name="description" content="Vampire Survivors save editor.">
+    <style>
+      :root {
+        --bg:#0d0b0f; --panel:#16121a; --panel-2:#1f1822; --line:#342a3a;
+        --ink:#ece6f0; --muted:#9a8fa6; --blood:#c01722; --blood-bright:#ff2e3e;
+        --gold:#e0b54a; --ok:#4cc66e; --warn:#e0a93a; --bad:#e2434f; --radius:10px;
+        --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+        --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+        --side:368px;
+        --t-key:#e0b54a; --t-str:#83d6a3; --t-num:#79b8ff; --t-bool:#ff8a5c; --t-null:#c78bff; --t-punc:#8c8294;
+      }
+      * { box-sizing:border-box; }
+      [hidden] { display:none !important; }
+      html { -webkit-text-size-adjust:100%; }
+      body {
+        margin:0; font-family:var(--sans); color:var(--ink); min-height:100vh;
+        background:radial-gradient(1100px 560px at 80% -200px,#23121a 0%,transparent 60%),var(--bg);
+      }
+      ::selection { background:rgba(224,181,74,.32); }
+      a { color:var(--gold); }
+
+      .app { display:flex; gap:18px; align-items:flex-start; max-width:1320px; margin:0 auto; padding:16px; }
+      .main { flex:1 1 auto; min-width:0; }
+
+      .side {
+        flex:0 0 var(--side); position:sticky; top:16px; height:calc(100vh - 32px);
+        display:flex; flex-direction:column; gap:10px;
+        padding:16px; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+      }
+      .side-top { display:flex; flex-direction:column; gap:10px; flex:0 0 auto; }
+      .side-help { flex:1 1 auto; min-height:0; overflow:auto; }
+      .side .title { font-size:18px; font-weight:800; letter-spacing:.4px; }
+      .side .title .v { color:var(--blood-bright); }
+      .side .sub { color:var(--muted); font-size:12px; margin-top:-4px; }
+      .side .sep { height:1px; background:var(--line); }
+      .side .row { display:flex; gap:8px; }
+      .side .row > * { flex:1; }
+
+      button,.btn {
+        font:inherit; font-size:13px; color:var(--ink); background:var(--panel-2);
+        border:1px solid var(--line); padding:9px 12px; border-radius:8px; cursor:pointer;
+        white-space:nowrap; text-align:center;
+      }
+      button:hover,.btn:hover { border-color:#5a4a63; }
+      button:focus-visible,.btn:focus-visible,input:focus-visible,summary:focus-visible,
+      textarea:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+      button.primary { background:var(--blood); border-color:var(--blood); color:#fff; }
+      button.primary:hover { background:var(--blood-bright); }
+      button.gold { color:#1a1410; background:var(--gold); border-color:var(--gold); font-weight:700; }
+      button.ghost { background:transparent; }
+      button.sm { padding:6px 9px; font-size:12px; }
+      .side .btn, .side-top > button { width:100%; }
+
+      .seg { display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+      .seg button { flex:1; border:0; border-radius:0; background:transparent; }
+      .seg button[aria-pressed="true"] { background:var(--blood); color:#fff; }
+
+      .heart {
+        display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:9px;
+        border:1px solid var(--line); background:var(--panel-2); font-size:13px; color:var(--muted);
+      }
+      .heart svg { width:18px; height:18px; display:block; flex:0 0 auto; }
+      .heart[data-state="valid"]    { color:var(--ok);  border-color:color-mix(in srgb,var(--ok) 40%,var(--line)); }
+      .heart[data-state="edited"]   { color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,var(--line)); }
+      .heart[data-state="mismatch"] { color:var(--bad); border-color:color-mix(in srgb,var(--bad) 40%,var(--line)); }
+      .heart[data-state="valid"] svg path    { fill:var(--ok); }
+      .heart[data-state="edited"] svg path   { fill:var(--warn); }
+      .heart[data-state="mismatch"] svg path { fill:var(--bad); }
+      .heart[data-state="none"] svg path     { fill:var(--line); }
+      @media (prefers-reduced-motion:no-preference) {
+        .heart[data-state="valid"] svg  { animation:beat 1.6s ease-in-out infinite; }
+        .heart[data-state="edited"] svg { animation:breathe 2.2s ease-in-out infinite; }
+      }
+      @keyframes beat { 0%,100%{transform:scale(1)} 12%{transform:scale(1.18)} 24%{transform:scale(1)} }
+      @keyframes breathe { 0%,100%{opacity:1} 50%{opacity:.55} }
+
+      .search {
+        width:100%; font:inherit; font-size:13px; color:var(--ink); background:var(--panel-2);
+        border:1px solid var(--line); border-radius:8px; padding:9px 10px;
+      }
+      #status { font-size:12px; min-height:16px; color:var(--muted); line-height:1.4; }
+      #status.err { color:var(--bad); } #status.ok { color:var(--ok); }
+
+      details.help { border:1px solid var(--line); border-radius:8px; background:var(--panel-2); }
+      details.help > summary { cursor:pointer; padding:9px 11px; font-size:13px; font-weight:600; list-style:none; }
+      details.help > summary::-webkit-details-marker { display:none; }
+      details.help > summary::before { content:"▸ "; color:var(--muted); }
+      details.help[open] > summary::before { content:"▾ "; }
+      .help-body { padding:0 11px 11px; color:var(--muted); font-size:12px; }
+      .help-body h4 { color:var(--ink); margin:10px 0 3px; font-size:12px; }
+      .help-body code { font-family:var(--mono); background:var(--bg); padding:1px 5px; border-radius:4px; font-size:11px; word-break:break-all; }
+      .pill { font-size:10px; padding:1px 6px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+
+      .quick {
+        position:sticky; top:0; z-index:4; display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px;
+        margin-bottom:12px; padding:9px 12px; border:1px solid var(--line); border-radius:10px;
+        background:color-mix(in srgb,var(--panel) 92%,transparent); backdrop-filter:blur(8px);
+        box-shadow:0 6px 18px -12px #000;
+      }
+      .qgroup { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+      .qlabel { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; padding-right: 8px; }
+      .quick input[type="number"] { width:128px; }
+      .quick .qfield { display:flex; align-items:center; gap:5px; }
+      .quick .qfield span { color:var(--muted); font-size:12px; }
+      .quick .vr { width:1px; align-self:stretch; background:var(--line); margin:2px 0; }
+
+      .view { display:none; } .view.active { display:block; }
+      .dropbig {
+        display:flex; align-items:center; justify-content:center; text-align:center;
+        min-height:64vh; padding:30px; color:var(--muted);
+        border:2px dashed var(--line); border-radius:var(--radius); background:var(--panel);
+      }
+      .dropbig.drag { border-color:var(--blood-bright); background:#1c0f12; color:var(--ink); }
+      .dropbig strong { color:var(--ink); display:block; font-size:18px; margin-bottom:6px; }
+      .dropbig .hint { font-size:13px; }
+
+      .code {
+        position:relative; min-height:64vh; height:64vh; resize:vertical; overflow:hidden;
+        border:1px solid var(--line); border-radius:var(--radius); background:#15111b;
+      }
+      .code.drag { border-color:var(--blood-bright); }
+      .code pre, .code textarea {
+        margin:0; position:absolute; inset:0; padding:14px;
+        font-family:var(--mono); font-size:13px; line-height:1.55; tab-size:2;
+        white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; border:0; overflow:auto;
+      }
+      .code pre { pointer-events:none; color:var(--t-punc); z-index:0; }
+      .code textarea { color:transparent; caret-color:var(--gold); background:transparent; z-index:1; resize:none; }
+      .code textarea::selection { background:rgba(224,181,74,.32); color:transparent; }
+      .t-key{color:var(--t-key);} .t-str{color:var(--t-str);} .t-num{color:var(--t-num);}
+      .t-bool{color:var(--t-bool);} .t-null{color:var(--t-null);}
+
+      details.group {
+        border:1px solid var(--line); border-radius:var(--radius); background:var(--panel);
+        margin:10px 0; overflow:hidden;
+      }
+      details.group > summary {
+        cursor:pointer; list-style:none; padding:12px 14px; font-weight:700;
+        display:flex; align-items:center; gap:10px; background:var(--panel-2);
+      }
+      details.group > summary::-webkit-details-marker { display:none; }
+      details.group > summary::before { content:"▸"; color:var(--muted); transition:transform .15s; }
+      details.group[open] > summary::before { transform:rotate(90deg); }
+      details.group > summary .count { color:var(--muted); font-weight:500; font-size:12px; }
+      .group-body { padding:6px 14px 14px; }
+
+      .field { padding:9px 0; border-top:1px solid #241d29; }
+      .field:first-child { border-top:0; }
+      .field-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+      .field-key { font-family:var(--mono); font-size:13px; }
+      .field-key .hint { color:var(--muted); font-size:11px; margin-left:6px; }
+      .field .ctl { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+      details.sub { border:1px solid var(--line); border-radius:8px; margin-top:8px; overflow:hidden; }
+      details.sub > summary {
+        cursor:pointer; list-style:none; padding:8px 10px; background:#1a151f; font-size:13px;
+        display:flex; align-items:center; gap:8px; font-family:var(--mono);
+      }
+      details.sub > summary::-webkit-details-marker { display:none; }
+      details.sub > summary::before { content:"▸"; color:var(--muted); }
+      details.sub[open] > summary::before { content:"▾"; }
+      details.sub .count { color:var(--muted); margin-left:auto; font-family:var(--sans); }
+      .sub-body { padding:8px 10px; }
+
+      .mapentry { padding:5px 0; border-top:1px solid #241d29; }
+      .mapentry:first-child { border-top:0; }
+      .mapentry.hide { display:none; }
+      .mapentry > .row1 { display:flex; align-items:center; gap:8px; }
+      .mapentry .mk { font-family:var(--mono); font-size:12px; color:var(--ink); min-width:120px; }
+      .mapentry .mk .small { color:var(--muted); font-size:11px; }
+      details.sub.lazy > summary .mk { font-family:var(--mono); }
+
+      input[type="number"], input[type="text"] {
+        font:inherit; font-size:13px; color:var(--ink); background:#120d16; border:1px solid var(--line);
+        border-radius:7px; padding:7px 9px; min-width:90px;
+      }
+      input[type="number"] { width:170px; max-width:48vw; font-family:var(--mono); }
+      label.chk { display:inline-flex; align-items:center; gap:8px; cursor:pointer; }
+
+      .list-tools { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+      .list-tools .search { flex:1 1 150px; width:auto; }
+      .options {
+        display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:3px 14px;
+        max-height:300px; overflow:auto; padding:8px; border:1px solid var(--line);
+        border-radius:8px; background:#120d16;
+      }
+      .options label { display:flex; align-items:center; gap:8px; padding:2px; font-size:13px; }
+      .options label.hide { display:none; }
+      .options .id { font-family:var(--mono); }
+      .add-row { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+
+      table.counter { width:100%; border-collapse:collapse; margin-top:6px; }
+      table.counter td { padding:4px 6px; border-top:1px solid #241d29; }
+      table.counter td:first-child { font-family:var(--mono); font-size:13px; }
+      table.counter tr.hide { display:none; }
+      table.counter input { width:140px; }
+      .raw textarea {
+        width:100%; min-height:120px; font-family:var(--mono); font-size:13px; color:#f3e9ea;
+        background:#120d16; border:1px solid var(--line); border-radius:8px; padding:10px; tab-size:2;
+      }
+      .numarea {
+        width:100%; min-height:64px; font-family:var(--mono); font-size:13px; color:var(--t-num);
+        background:#120d16; border:1px solid var(--line); border-radius:8px; padding:10px;
+      }
+
+      @media (max-width:900px) {
+        .app { flex-direction:column-reverse; }
+        .side { position:static; height:auto; width:100%; flex-basis:auto; }
+        .side-help { overflow:visible; }
+      }
+      @media (max-width:600px) {
+        input[type="number"] { width:100%; }
+        .field .ctl { margin-left:0; width:100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <main class="main">
+        <div class="quick" id="quick" hidden></div>
+
+        <section id="view-text" class="view">
+          <div id="code" class="code" data-drop>
+            <pre id="hl" aria-hidden="true"></pre>
+            <textarea id="json" spellcheck="false" placeholder="Paste or drop a save here…"></textarea>
+          </div>
+        </section>
+
+        <section id="view-visual" class="view active">
+          <div id="visual-empty" class="dropbig" data-drop>
+            <div><strong>Drop a save file here</strong><span class="hint">…or use "Load file"</span></div>
+          </div>
+          <div id="visual-content"></div>
+        </section>
+      </main>
+
+      <aside class="side">
+        <div class="side-top">
+          <div class="title"><span class="v">Vampire</span> Survivors</div>
+          <div class="sub">Save editor — checksum fixed automatically.</div>
+          <label class="btn" for="file">Load file</label>
+          <input id="file" type="file" hidden />
+          <div class="seg" role="group" aria-label="Mode">
+            <button id="mode-visual" aria-pressed="true">Visual</button>
+            <button id="mode-text" aria-pressed="false">Text</button>
+          </div>
+          <div class="heart" id="badge" data-state="none" title="Checksum status">
+            <svg id="heart-svg" viewBox="0 0 24 24" aria-hidden="true"></svg>
+            <span id="badge-text">No save</span>
+          </div>
+          <input id="search" class="search" type="search" placeholder="Filter fields…" />
+          <div class="sep"></div>
+          <div class="row">
+            <button id="btn-recalc" class="ghost">Recalculate</button>
+            <button id="btn-verify" class="ghost">Verify</button>
+          </div>
+          <button id="btn-backup" class="ghost">Download backup</button>
+          <button id="btn-download" class="primary">Download save</button>
+          <div id="status" role="status" aria-live="polite"></div>
+          <div class="sep"></div>
+        </div>
+
+        <div class="side-help">
+          <details class="help">
+            <summary>Help &amp; file location</summary>
+            <div class="help-body">
+              <h4>Save file location</h4>
+              <p><span class="pill">Win</span> <code>%appdata%\Vampire_Survivors_Data\SaveData.sav</code></p>
+              <p><span class="pill">macOS</span> <code>~/Library/Application Support/Vampire_Survivors_Data/SaveData.sav</code></p>
+              <p><span class="pill">Linux</span> <code>~/.config/Vampire_Survivors_Data/SaveData.sav</code></p>
+              <h4>How</h4>
+              <p>Close the game, load the file, edit, <em>Download save</em>, replace the original.</p>
+              <h4>Notes</h4>
+                <p>Steam Cloud can revert local edits — disable it while editing</p>
+                <p>See <a href="https://vampire.survivors.wiki/w/SaveData">this</a> to learn more about <code>SaveData</code> entities.</p>
+            </div>
+          </details>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      "use strict";
+      const $ = (s) => document.querySelector(s);
+      const els = {
+        file:$("#file"), textarea:$("#json"), hl:$("#hl"), code:$("#code"),
+        visualEmpty:$("#visual-empty"), status:$("#status"), search:$("#search"),
+        viewText:$("#view-text"), viewVisual:$("#view-visual"),
+        visualContent:$("#visual-content"), quick:$("#quick"),
+        badge:$("#badge"), badgeText:$("#badge-text"), heartSvg:$("#heart-svg"),
+        modeVisual:$("#mode-visual"), modeText:$("#mode-text"),
+      };
+      let model=null, originalText=null, baseline=null, loadedValid=false, mode="visual";
+
+      const HEART_WHOLE = '<path d="M12 21s-7.5-4.6-10-9.2C.4 8.5 1.9 5 5.2 5c2 0 3.3 1.1 4.1 2.3.7 1 1.4 1 2.1 0C12.5 6.1 13.8 5 15.8 5c3.3 0 4.8 3.5 3.2 6.8C19.5 16.4 12 21 12 21z"/>';
+      const HEART_CRACK = '<path d="M12 21s-7.5-4.6-10-9.2C.4 8.5 1.9 5 5.2 5c2 0 3.3 1.1 4.1 2.3.3.45.6.7.9.78L9 9.2l2.2 1.3-1.5 2.1 2.4 1.6-1.3 2.2L12 21z"/><path d="M12 21s7.5-4.6 10-9.2C23.6 8.5 22.1 5 18.8 5c-2 0-3.3 1.1-4.1 2.3-.3.45-.6.7-.9.78L13.2 11l-1.6 1 1.3 2-2.1 1.5 1.9 1.4L12 21z" opacity=".85"/>';
+
+      const CATEGORY_FIELDS = {
+        char:["SelectedCharacter","BoughtCharacters","UnlockedCharacters"],
+        weapon:["CollectedWeapons","UnlockedWeapons"],
+        map:["SelectedStage","UnlockedStages","UnlockedHypers"],
+        powerup:["BoughtPowerups","UnlockedPowerUpRanks"],
+        item:["CollectedItems"], achievement:["Achievements"],
+      };
+      const KEY_TO_CAT = {};
+      for (const [c,fs] of Object.entries(CATEGORY_FIELDS)) for (const f of fs) KEY_TO_CAT[f]=c;
+      const QUICK_NUMBERS = ["Coins","LifetimeCoins","RunCoins","Gems"];
+      const QUICK_UNLOCK = [["UnlockedCharacters","characters"],["UnlockedWeapons","weapons"],["UnlockedStages","stages"],["Achievements","achievements"]];
+
+      const buf2hex = (b) => [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+      const sha256 = (t) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)).then(buf2hex);
+      const serialize = (obj,cs) => JSON.stringify({ ...obj, checksum: cs });
+      const checksumOf = (obj) => sha256(serialize(obj,""));
+      function verifyOriginal(text, stored){
+        if (typeof stored !== "string") return Promise.resolve(false);
+        const blanked = text.replace('"checksum":"'+stored+'"','"checksum":""').replace('"checksum": "'+stored+'"','"checksum": ""');
+        return sha256(blanked).then(h => h === stored);
+      }
+
+      const tryParse = (t) => { try { return JSON.parse(t); } catch { return null; } };
+      const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+      const isNum = (v) => typeof v === "number" && !Number.isNaN(v);
+      const allNum = (a) => a.length>0 && a.every(isNum);
+      function widgetType(v){
+        if (typeof v==="boolean") return "bool";
+        if (typeof v==="number") return Number.isInteger(v)?"int":"float";
+        if (typeof v==="string") return "string";
+        if (Array.isArray(v)){
+          if (v.every(x=>typeof x==="string")) return new Set(v).size!==v.length?"multiset":"list";
+          if (allNum(v)) return "numlist";
+          return "raw";
+        }
+        if (isObj(v)){
+          const vals=Object.values(v);
+          if (vals.length===0) return "raw";
+          if (vals.every(isNum)) return "counter";
+          return "map";
+        }
+        return "raw";
+      }
+      function vocabFor(key){
+        const cat=KEY_TO_CAT[key], fields=cat?CATEGORY_FIELDS[cat]:[key], set=new Set();
+        for (const f of fields){ const v=model[f];
+          if (Array.isArray(v)) v.forEach(x=>typeof x==="string"&&set.add(x));
+          else if (typeof v==="string"&&v) set.add(v); }
+        const own=model[key]; if (Array.isArray(own)) own.forEach(x=>typeof x==="string"&&set.add(x));
+        return [...set].sort();
+      }
+
+      function setStatus(m,k=""){ els.status.textContent=m||""; els.status.className=k; }
+      function setBadge(state,text){ els.badge.dataset.state=state; els.badgeText.textContent=text; els.heartSvg.innerHTML = state==="mismatch"?HEART_CRACK:HEART_WHOLE; }
+      function refreshBadge(){
+        if (!model) return setBadge("none","No save");
+        const same = JSON.stringify(model) === baseline;
+        if (same) loadedValid ? setBadge("valid","Checksum valid") : setBadge("mismatch","Checksum mismatch — fixed on save");
+        else setBadge("edited","Edited — fixed on save");
+      }
+
+      const raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : (cb)=>setTimeout(cb,16);
+      function escapeHtml(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+      function highlight(src){
+        return escapeHtml(src).replace(
+          /("(?:\\.|[^"\\])*"\s*:?|\b(?:true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+          (m)=>{ let cls; if(m[0]==='"')cls=/:\s*$/.test(m)?"key":"str"; else if(m==="true"||m==="false")cls="bool"; else if(m==="null")cls="null"; else cls="num"; return '<span class="t-'+cls+'">'+m+'</span>'; });
+      }
+      function renderHL(){ els.hl.innerHTML = highlight(els.textarea.value) + "\n"; }
+      let hlScheduled=false;
+      function scheduleHL(){ if(hlScheduled)return; hlScheduled=true; raf(()=>{ hlScheduled=false; renderHL(); }); }
+      function setCode(text){ els.textarea.value=text; renderHL(); }
+      els.textarea.addEventListener("scroll", ()=>{ els.hl.scrollTop=els.textarea.scrollTop; els.hl.scrollLeft=els.textarea.scrollLeft; });
+      els.textarea.addEventListener("keydown",(e)=>{
+        if(e.key==="Tab"){ e.preventDefault();
+          const s=els.textarea.selectionStart,en=els.textarea.selectionEnd,v=els.textarea.value;
+          els.textarea.value=v.slice(0,s)+"  "+v.slice(en); els.textarea.selectionStart=els.textarea.selectionEnd=s+2;
+          scheduleHL(); queueParse(); }
+      });
+
+      function updateEmpty(){ const has=!!model; els.visualEmpty.hidden=has; els.quick.hidden=!has; }
+
+      async function loadText(text){
+        const parsed=tryParse(text);
+        if(!parsed){ setStatus("Not valid JSON — pick the right save file.","err"); return; }
+        originalText=text; model=parsed; baseline=JSON.stringify(model);
+        loadedValid=await verifyOriginal(text, model.checksum);
+        setCode(JSON.stringify(model,null,2));
+        updateEmpty(); renderVisual(); renderQuick();
+        setStatus(("checksum" in model)?"":"No checksum field — this may not be a VS save.",("checksum" in model)?"":"err");
+        refreshBadge();
+      }
+      function readFile(f){ if(!f)return; const r=new FileReader(); r.onload=()=>loadText(String(r.result)); r.onerror=()=>setStatus("Couldn’t read that file.","err"); r.readAsText(f); }
+      els.file.addEventListener("change", ()=>readFile(els.file.files[0]));
+
+      let deb;
+      function queueParse(){
+        clearTimeout(deb);
+        deb=setTimeout(()=>{
+          const p=tryParse(els.textarea.value);
+          if(!p){ setStatus("Invalid JSON.","err"); setBadge("none","Invalid JSON"); return; }
+          model=p; if(originalText===null){ originalText=els.textarea.value; baseline=JSON.stringify(model); }
+          updateEmpty(); renderQuick(); setStatus(""); refreshBadge();
+        },300);
+      }
+      els.textarea.addEventListener("input", ()=>{ scheduleHL(); queueParse(); });
+
+      document.querySelectorAll("[data-drop]").forEach((z)=>{
+        ["dragenter","dragover"].forEach(ev=>z.addEventListener(ev,e=>{e.preventDefault(); z.classList.add("drag");}));
+        ["dragleave","drop"].forEach(ev=>z.addEventListener(ev,e=>{e.preventDefault(); z.classList.remove("drag");}));
+        z.addEventListener("drop",e=>readFile(e.dataTransfer.files[0]));
+      });
+
+      const ATTR_ONLY = new Set(["list","for"]);
+      function el(tag, props={}, kids=[]){
+        const n=document.createElement(tag);
+        for (const [k,v] of Object.entries(props)){
+          if (k==="class") n.className=v;
+          else if (k==="text") n.textContent=v;
+          else if (ATTR_ONLY.has(k)||k.includes("-")) n.setAttribute(k,v);
+          else if (k in n){ try{ n[k]=v; }catch{ n.setAttribute(k,v); } }
+          else n.setAttribute(k,v);
+        }
+        for (const c of [].concat(kids)) if (c) n.append(c);
+        return n;
+      }
+      const onEdit = () => refreshBadge();
+
+      function numInput(getV,setV){
+        const inp=el("input",{type:"number",value:String(getV())});
+        if(!Number.isInteger(getV())) inp.step="any";
+        inp.addEventListener("change",()=>{ const n=Number(inp.value); if(Number.isNaN(n)){setStatus("not a number","err");return;} setV(n); onEdit(); });
+        return inp;
+      }
+      function textInput(getV,setV,vocab){
+        const inp=el("input",{type:"text",value:getV()});
+        if(vocab&&vocab.length){ const id="dl"+Math.random().toString(36).slice(2),dl=el("datalist",{id}); vocab.forEach(v=>dl.append(el("option",{value:v}))); inp.setAttribute("list",id); inp.after?.(dl); }
+        inp.addEventListener("change",()=>{ setV(inp.value); onEdit(); });
+        return inp;
+      }
+      function boolInput(getV,setV){
+        const cb=el("input",{type:"checkbox",checked:getV()}), lbl=el("span",{text:getV()?"true":"false"});
+        cb.addEventListener("change",()=>{ setV(cb.checked); lbl.textContent=cb.checked?"true":"false"; onEdit(); });
+        return el("label",{class:"chk"},[cb,lbl]);
+      }
+      function miniStringList(arr, vocab){
+        const options=[...new Set([...(vocab||[]),...arr])].sort();
+        const search=el("input",{class:"search",type:"search",placeholder:"Filter…"});
+        const all=el("button",{class:"gold sm",type:"button",text:"All"});
+        const clr=el("button",{class:"sm",type:"button",text:"Clear"});
+        const box=el("div",{class:"options"}); const checks=new Map();
+        const add=(opt,chk)=>{ const cb=el("input",{type:"checkbox",checked:chk});
+          cb.addEventListener("change",()=>{ if(cb.checked){if(!arr.includes(opt))arr.push(opt);} else { const i=arr.indexOf(opt); if(i>=0)arr.splice(i,1);} onEdit(); });
+          checks.set(opt,cb); box.append(el("label",{},[cb,el("span",{class:"id",text:opt})])); };
+        const sel=new Set(arr); options.forEach(o=>add(o,sel.has(o)));
+        search.addEventListener("input",()=>{const q=search.value.toLowerCase(); box.querySelectorAll("label").forEach(l=>l.classList.toggle("hide",!l.textContent.toLowerCase().includes(q)));});
+        all.addEventListener("click",()=>{ arr.length=0; options.forEach(o=>arr.push(o)); checks.forEach(c=>c.checked=true); onEdit(); });
+        clr.addEventListener("click",()=>{ arr.length=0; checks.forEach(c=>c.checked=false); onEdit(); });
+        return el("div",{},[el("div",{class:"list-tools"},[search,all,clr]),box]);
+      }
+      function miniCounter(obj){
+        const keys=Object.keys(obj);
+        const fill=el("input",{type:"number",value:"9999999"}); fill.style.width="110px";
+        const setAll=el("button",{class:"gold sm",type:"button",text:"Set all"});
+        const zero=el("button",{class:"sm",type:"button",text:"Zero"});
+        const search=el("input",{class:"search",type:"search",placeholder:"Filter…"});
+        const table=el("table",{class:"counter"}); const inputs=new Map();
+        for(const k of keys){ const inp=el("input",{type:"number",value:String(obj[k])}); if(!Number.isInteger(obj[k]))inp.step="any";
+          inp.addEventListener("change",()=>{const n=Number(inp.value); if(Number.isNaN(n))return; obj[k]=n; onEdit();}); inputs.set(k,inp);
+          table.append(el("tr",{"data-k":k.toLowerCase()},[el("td",{text:k}),el("td",{},[inp])])); }
+        search.addEventListener("input",()=>{const q=search.value.toLowerCase(); table.querySelectorAll("tr").forEach(tr=>tr.classList.toggle("hide",!tr.dataset.k.includes(q)));});
+        setAll.addEventListener("click",()=>{const n=Number(fill.value); if(Number.isNaN(n))return; for(const k of keys){obj[k]=n; inputs.get(k).value=String(n);} onEdit();});
+        zero.addEventListener("click",()=>{for(const k of keys){obj[k]=0; inputs.get(k).value="0";} onEdit();});
+        return el("div",{},[el("div",{class:"list-tools"},[search,fill,setAll,zero]),table]);
+      }
+      function miniRaw(getV,setV){
+        const ta=el("textarea",{spellcheck:false}); ta.value=JSON.stringify(getV(),null,2);
+        ta.addEventListener("change",()=>{ const p=tryParse(ta.value); if(p===null&&ta.value.trim()!=="null"){setStatus("invalid JSON, not applied","err");return;} setV(p); setStatus(""); onEdit(); });
+        return el("div",{class:"raw"},[ta]);
+      }
+      function miniEditor(getV,setV,val,vocab){
+        if(typeof val==="boolean") return boolInput(getV,setV);
+        if(typeof val==="number")  return numInput(getV,setV);
+        if(typeof val==="string")  return textInput(getV,setV,vocab);
+        if(Array.isArray(val) && val.every(x=>typeof x==="string")) return miniStringList(val, vocab);
+        if(isObj(val) && Object.values(val).every(isNum) && Object.keys(val).length) return miniCounter(val);
+        return miniRaw(getV,setV);
+      }
+
+      function fieldRow(key, extra){
+        const head=el("div",{class:"field-head"},[el("span",{class:"field-key"},[document.createTextNode(key)])]);
+        if (extra) head.append(extra);
+        return el("div",{class:"field","data-key":key.toLowerCase()},[head]);
+      }
+      function scalarField(key){
+        const value=model[key], t=widgetType(value), ctl=el("div",{class:"ctl"});
+        if(t==="bool") ctl.append(boolInput(()=>model[key],v=>model[key]=v));
+        else if(t==="int"||t==="float") ctl.append(numInput(()=>model[key],v=>model[key]=v));
+        else { const vocab=vocabFor(key); const inp=textInput(()=>model[key],v=>model[key]=v,vocab); ctl.append(inp);
+          if(vocab.length){const id="dl-"+key,dl=el("datalist",{id}); vocab.forEach(v=>dl.append(el("option",{value:v}))); inp.setAttribute("list",id); ctl.append(dl);} }
+        const row=fieldRow(key,ctl); row.querySelector(".field-key").append(el("span",{class:"hint",text:t})); return row;
+      }
+      function subWrap(key, hint, bodyKids, openIf){
+        const det=el("details",{class:"sub"},[el("summary",{},[el("span",{text:key}),el("span",{class:"count",text:hint})]),el("div",{class:"sub-body"},bodyKids)]);
+        det.open=!!openIf;
+        return el("div",{class:"field","data-key":key.toLowerCase()},[det]);
+      }
+      function listField(key){
+        const arr=model[key], vocab=vocabFor(key), options=[...new Set([...vocab,...arr])].sort();
+        const count=el("span",{class:"count"}); const upd=()=>count.textContent=`${model[key].length} / ${options.length}`;
+        const search=el("input",{class:"search",type:"search",placeholder:"Filter…"});
+        const unlockAll=el("button",{class:"gold",type:"button",text:"Unlock all"});
+        const clearAll=el("button",{type:"button",text:"Clear"});
+        const box=el("div",{class:"options"}); const checks=new Map();
+        const add=(opt,checked)=>{ const cb=el("input",{type:"checkbox",checked});
+          cb.addEventListener("change",()=>{const cur=model[key]; if(cb.checked){if(!cur.includes(opt))cur.push(opt);} else model[key]=cur.filter(x=>x!==opt); upd(); onEdit();});
+          checks.set(opt,cb); box.append(el("label",{},[cb,el("span",{class:"id",text:opt})])); };
+        const sel=new Set(arr); options.forEach(o=>add(o,sel.has(o)));
+        search.addEventListener("input",()=>{const q=search.value.toLowerCase(); box.querySelectorAll("label").forEach(l=>l.classList.toggle("hide",!l.textContent.toLowerCase().includes(q)));});
+        unlockAll.addEventListener("click",()=>{model[key]=[...options]; checks.forEach(c=>c.checked=true); upd(); onEdit();});
+        clearAll.addEventListener("click",()=>{model[key]=[]; checks.forEach(c=>c.checked=false); upd(); onEdit();});
+        const addInput=el("input",{type:"text",placeholder:"Add ID…",list:"dla-"+key});
+        const dl=el("datalist",{id:"dla-"+key}); options.forEach(o=>dl.append(el("option",{value:o})));
+        const addBtn=el("button",{type:"button",text:"Add"});
+        const doAdd=()=>{const id=addInput.value.trim(); if(!id)return; if(!model[key].includes(id))model[key].push(id); if(!checks.has(id))add(id,true); else checks.get(id).checked=true; addInput.value=""; upd(); onEdit();};
+        addBtn.addEventListener("click",doAdd); addInput.addEventListener("keydown",e=>{if(e.key==="Enter")doAdd();});
+        upd();
+        const node=subWrap(key,"",[el("div",{class:"list-tools"},[search,unlockAll,clearAll]),box,el("div",{class:"add-row"},[addInput,dl,addBtn])], options.length<=40);
+        node.querySelector("summary .count").replaceWith(count);
+        return node;
+      }
+      function multisetField(key){
+        const arr=model[key]; const counts={}; arr.forEach(x=>counts[x]=(counts[x]||0)+1);
+        const options=[...new Set([...vocabFor(key),...Object.keys(counts)])].sort();
+        const total=el("span",{class:"count"}); const inputs=new Map();
+        const rebuild=()=>{ const out=[]; for(const id of options){const c=Math.max(0,inputs.get(id).value|0); for(let i=0;i<c;i++)out.push(id);} model[key]=out; total.textContent=`${out.length} total`; onEdit(); };
+        const search=el("input",{class:"search",type:"search",placeholder:"Filter…"});
+        const clr=el("button",{type:"button",text:"All 0"});
+        const table=el("table",{class:"counter"});
+        for(const id of options){const inp=el("input",{type:"number",min:"0",value:String(counts[id]||0)}); inp.addEventListener("change",rebuild); inputs.set(id,inp);
+          table.append(el("tr",{"data-k":id.toLowerCase()},[el("td",{text:id}),el("td",{},[inp])]));}
+        search.addEventListener("input",()=>{const q=search.value.toLowerCase(); table.querySelectorAll("tr").forEach(tr=>tr.classList.toggle("hide",!tr.dataset.k.includes(q)));});
+        clr.addEventListener("click",()=>{inputs.forEach(i=>i.value="0"); rebuild();});
+        total.textContent=`${arr.length} total`;
+        const node=subWrap(key,"×count",[el("div",{class:"list-tools"},[search,clr]),table], options.length<=40);
+        node.querySelector("summary").append(total);
+        return node;
+      }
+      function numlistField(key){
+        const ta=el("textarea",{class:"numarea",spellcheck:false}); ta.value=model[key].join(", ");
+        const apply=()=>{ const parts=ta.value.split(/[\s,]+/).filter(s=>s!==""); const nums=parts.map(Number);
+          if(nums.some(Number.isNaN)){ setStatus(key+": only numbers, comma-separated","err"); return; }
+          model[key]=nums; setStatus(""); onEdit(); };
+        ta.addEventListener("change",apply);
+        const nInput=el("input",{type:"number",value:String(Math.max(0,...model[key].filter(Number.isInteger)))}); nInput.style.width="90px";
+        const fill=el("button",{class:"gold sm",type:"button",text:"Set 0–N"});
+        fill.addEventListener("click",()=>{ const N=Number(nInput.value); if(!Number.isInteger(N)||N<0){setStatus("N must be a non-negative integer","err");return;} const a=[]; for(let i=0;i<=N;i++)a.push(i); model[key]=a; ta.value=a.join(", "); setStatus(""); onEdit(); });
+        const tools=el("div",{class:"list-tools"},[el("span",{class:"qlabel",text:"comma-separated"}),nInput,fill]);
+        return subWrap(key,model[key].length+" nums",[ta,tools], model[key].length<=64);
+      }
+      function counterField(key){
+        const body=miniCounter(model[key]);
+        return subWrap(key, Object.keys(model[key]).length+" keys", [body], Object.keys(model[key]).length<=30);
+      }
+      function mapField(key){
+        const obj=model[key]; const entries=Object.keys(obj);
+        if(entries.length===0) return rawFieldTop(key);
+        const vocabSet=new Set();
+        for(const k of entries){ const v=obj[k]; if(Array.isArray(v)) v.forEach(x=>typeof x==="string"&&vocabSet.add(x)); }
+        const vocab=[...vocabSet].sort();
+        const search=el("input",{class:"search",type:"search",placeholder:"Filter keys…"});
+        const list=el("div",{});
+        const describe=(v)=> Array.isArray(v)?`[${v.length}]`: isObj(v)?`{${Object.keys(v).length}}`: typeof v;
+        for(const k of entries){
+          const v=obj[k];
+          const wrap=el("div",{class:"mapentry","data-k":k.toLowerCase()});
+          if(v===null||["number","string","boolean"].includes(typeof v)){
+            const ctl=miniEditor(()=>obj[k],nv=>obj[k]=nv,v,vocab);
+            wrap.append(el("div",{class:"row1"},[el("span",{class:"mk",text:k}),ctl]));
+          } else {
+            const det=el("details",{class:"sub lazy"},[el("summary",{},[el("span",{class:"mk",text:k}),el("span",{class:"count",text:describe(v)})])]);
+            const bd=el("div",{class:"sub-body"}); det.append(bd); let built=false;
+            det.addEventListener("toggle",()=>{ if(det.open&&!built){ built=true; bd.append(miniEditor(()=>obj[k],nv=>obj[k]=nv,obj[k],vocab)); } });
+            wrap.append(det);
+          }
+          list.append(wrap);
+        }
+        search.addEventListener("input",()=>{const q=search.value.toLowerCase(); list.querySelectorAll(".mapentry").forEach(e=>e.classList.toggle("hide",!e.dataset.k.includes(q)));});
+        return subWrap(key, entries.length+" keys", [el("div",{class:"list-tools"},[search]),list], entries.length<=20);
+      }
+      function rawFieldTop(key){
+        const body=miniRaw(()=>model[key],v=>model[key]=v);
+        return subWrap(key,"raw JSON",[body], false);
+      }
+
+      function group(title){
+        const cnt=el("span",{class:"count"}); const body=el("div",{class:"group-body"});
+        const d=el("details",{class:"group",open:true},[el("summary",{},[el("span",{text:title}),cnt]),body]);
+        d._body=body; d._cnt=cnt; return d;
+      }
+      function renderVisual(){
+        els.visualContent.innerHTML="";
+        if(!model)return;
+        const g={values:group("Values & settings"),lists:group("Unlocks & collections"),counters:group("Counters"),maps:group("Per-character / nested"),raw:group("Advanced (raw)")};
+        const c={values:0,lists:0,counters:0,maps:0,raw:0};
+        for(const key of Object.keys(model)){
+          if(key==="checksum")continue;
+          const t=widgetType(model[key]);
+          if(t==="list"){g.lists._body.append(listField(key)); c.lists++;}
+          else if(t==="multiset"){g.lists._body.append(multisetField(key)); c.lists++;}
+          else if(t==="numlist"){g.lists._body.append(numlistField(key)); c.lists++;}
+          else if(t==="counter"){g.counters._body.append(counterField(key)); c.counters++;}
+          else if(t==="map"){g.maps._body.append(mapField(key)); c.maps++;}
+          else if(t==="raw"){g.raw._body.append(rawFieldTop(key)); c.raw++;}
+          else {g.values._body.append(scalarField(key)); c.values++;}
+        }
+        for(const [name,gr] of Object.entries(g)){ if(!c[name])continue; gr._cnt.textContent=c[name]+" field"+(c[name]===1?"":"s"); els.visualContent.append(gr); }
+        applyFieldFilter();
+      }
+      function renderQuick(){
+        els.quick.innerHTML=""; if(!model)return;
+        const cur=el("div",{class:"qgroup"}); let curN=0;
+        cur.append(el("span",{class:"qlabel",text:"Currencies"}));
+        for(const key of QUICK_NUMBERS){ if(typeof model[key]!=="number")continue; curN++;
+          const inp=el("input",{type:"number",value:String(model[key])});
+          inp.addEventListener("change",()=>{const n=Number(inp.value); if(Number.isNaN(n))return; model[key]=n; onEdit(); syncTextFromModel(); refreshVisualField(key);});
+          cur.append(el("span",{class:"qfield"},[el("span",{text:key}),inp]));
+        }
+        if(curN) els.quick.append(cur);
+        const unl=el("div",{class:"qgroup"}); let unlN=0;
+        unl.append(el("span",{class:"qlabel",text:"Unlock all"}));
+        for(const [key,lbl] of QUICK_UNLOCK){ if(!Array.isArray(model[key]))continue; unlN++;
+          const b=el("button",{class:"gold sm",type:"button",text:lbl});
+          b.addEventListener("click",()=>{model[key]=[...new Set([...vocabFor(key),...model[key]])]; onEdit(); renderVisual(); syncTextFromModel();});
+          unl.append(b);
+        }
+        if(isObj(model.KillCount)){ unlN++; const b=el("button",{class:"sm",type:"button",text:"Max kills"});
+          b.addEventListener("click",()=>{for(const k in model.KillCount)model.KillCount[k]=9999999; onEdit(); renderVisual(); syncTextFromModel();}); unl.append(b);}
+        if(curN&&unlN) els.quick.append(el("div",{class:"vr"}));
+        if(unlN) els.quick.append(unl);
+      }
+      function refreshVisualField(key){
+        const f=els.visualContent.querySelector(`.field[data-key="${key.toLowerCase()}"] input[type="number"]`);
+        if(f) f.value=String(model[key]);
+      }
+      function applyFieldFilter(){
+        const q=(els.search.value||"").toLowerCase();
+        els.visualContent.querySelectorAll(".field").forEach(f=>{ f.style.display=(!q||f.dataset.key.includes(q))?"":"none"; });
+        if(q) els.visualContent.querySelectorAll("details.group").forEach(d=>d.open=true);
+      }
+      els.search.addEventListener("input",applyFieldFilter);
+
+      function syncTextFromModel(){ if(model) setCode(JSON.stringify(model,null,2)); }
+      function setMode(next){
+        if(next===mode)return;
+        if(mode==="text"){ const txt=els.textarea.value.trim(); if(txt){ const p=tryParse(txt); if(!p){setStatus("Fix the JSON before switching.","err"); return;} model=p; } }
+        mode=next; const v=mode==="visual";
+        els.modeVisual.setAttribute("aria-pressed",String(v)); els.modeText.setAttribute("aria-pressed",String(!v));
+        els.viewVisual.classList.toggle("active",v); els.viewText.classList.toggle("active",!v);
+        updateEmpty();
+        if(v) renderVisual(); else syncTextFromModel();
+      }
+      els.modeVisual.addEventListener("click",()=>setMode("visual"));
+      els.modeText.addEventListener("click",()=>setMode("text"));
+
+      function adoptText(){ if(mode!=="text")return true; const txt=els.textarea.value.trim(); if(!txt)return true; const p=tryParse(txt); if(!p){setStatus("Invalid JSON.","err");return false;} model=p; return true; }
+      $("#btn-recalc").addEventListener("click", async ()=>{
+        if(!adoptText())return; if(!model)return setStatus("Load a save first.","err");
+        model.checksum=await checksumOf(model); baseline=JSON.stringify(model); loadedValid=true;
+        syncTextFromModel(); refreshBadge(); setStatus("Checksum recalculated.","ok");
+      });
+      $("#btn-verify").addEventListener("click", ()=>{
+        if(!adoptText())return; if(!model)return setStatus("Load a save first.","err");
+        const same=JSON.stringify(model)===baseline;
+        if(same&&loadedValid) setStatus("Checksum matches the data.","ok");
+        else if(same) setStatus("Stored checksum doesn’t match — fixed on save.","err");
+        else setStatus("Edited — checksum recalculated on save.");
+        refreshBadge();
+      });
+      function download(name,text){
+        const url=URL.createObjectURL(new Blob([text],{type:"application/json"}));
+        const a=el("a",{href:url,download:name}); a.style.display="none"; document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+      $("#btn-backup").addEventListener("click",()=>{
+        const t=originalText ?? els.textarea.value; if(!t.trim())return setStatus("Nothing to back up yet.","err");
+        download("SaveData.backup.sav",t); setStatus("Backup downloaded.","ok");
+      });
+      $("#btn-download").addEventListener("click", async ()=>{
+        if(!adoptText())return; if(!model)return setStatus("Load a save first.","err");
+        const cs=await checksumOf(model); const text=serialize(model,cs);
+        model.checksum=cs; baseline=JSON.stringify(model); loadedValid=true;
+        syncTextFromModel(); refreshBadge(); download("SaveData.sav",text); setStatus("Saved with a fresh checksum.","ok");
+      });
+
+      setBadge("none","No save"); updateEmpty();
+    </script>
+  </body>
+</html>
