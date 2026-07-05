@@ -7,6 +7,7 @@ A grab-bag of scripts and small tools I've written or relied on.
 | Directory | What's inside |
 |---|---|
 | [`save-editors/`](./save-editors/) | Save-file editors for various games |
+| [`downloaders/`](./downloaders/) | Scripts that pull files down from a site or service |
 
 ## Using anything here
 
