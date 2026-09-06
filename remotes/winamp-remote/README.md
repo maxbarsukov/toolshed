@@ -28,6 +28,7 @@ tags, cover art, search, folder browsing and a sleep timer.
 - Play, pause, seek, volume, shuffle and repeat
 - Track title, cover art and tags read straight from the file, so they work
   even where the plugin refuses to answer or mangles non-Latin text
+- MP3, FLAC, Ogg, Opus and MP4 tags, with embedded covers and ratings
 - Search across the whole playlist, even with thousands of entries
 - Browse the library folders and queue tracks without touching the PC
 - Sleep timer with a slow fade, counted on the PC so the phone can sleep
@@ -195,6 +196,14 @@ the track card recover even when the playlist rows cannot.
 **The playlist loads slowly.** Raise `workers` in `config.ini` from 6 to 10.
 Higher is not worth it: httpQ is single threaded and starts dropping
 connections.
+
+**Something does not respond and `/probe` looks fine.** Add `?debug=1` to the
+address. A journal appears at the bottom of the page and records what the
+page actually did: every command sent to the plugin with its answer and
+round-trip time, failed requests with the reason, media session actions
+arriving from the notification, and when the browser suspends or resumes the
+page. A press that leaves no line at all never reached the page, which
+separates a browser problem from a network one straight away.
 
 ---
 

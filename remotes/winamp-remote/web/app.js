@@ -3,6 +3,26 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
+  var journal = null;
+
+  function watch(text) {
+    if (!journal) return;
+    var stamp = new Date().toISOString().slice(14, 23);
+    var line = document.createElement("div");
+    line.textContent = stamp + "  " + text;
+    journal.insertBefore(line, journal.firstChild);
+    while (journal.childNodes.length > 60) {
+      journal.removeChild(journal.lastChild);
+    }
+  }
+
+  if (/(^|[?&])debug=1/.test(location.search)) {
+    journal = document.createElement("div");
+    journal.id = "journal";
+    document.body.appendChild(journal);
+    watch("journal on");
+  }
+
   var timeBox = $("time"), titleBox = $("title"), lamp = $("lamp"), flags = $("flags");
   var posbar = $("posbar"), marquee = titleBox.parentNode;
   var vol = $("vol"), volout = $("volout");
@@ -19,10 +39,10 @@
   var knownTitle = "", listPos = -1, listTotal = 0;
   var queueList = null, queueBusy = false, queueStart = 0, queueEnd = 0;
   var searching = false, searchTimer = null, queueKicked = false;
-  var silence = null, flagLine = "connecting";
+  var flagLine = "connecting";
   var dragging = false, currentPath = "", browseUp = null;
-  var holding = false, beat = 0;
-  var resume = null, wasMode = -1, fileTitle = "";
+  var beat = 0, armed = -1;
+  var resume = null, wasMode = -1, fileTitle = "", loadedFor = -2;
 
   function api(path) {
     return fetch("api/" + path, { cache: "no-store" }).then(function (r) {
@@ -40,7 +60,16 @@
   }
 
   function send(command, params) {
-    return text(command, params).catch(function () {
+    var began = Date.now();
+    var label = command + (params ? "?" + params : "");
+
+    return text(command, params).then(function (answer) {
+      watch("sent " + label + " -> " + answer.trim().slice(0, 12) +
+            " in " + (Date.now() - began) + "ms");
+      return answer;
+    }).catch(function (problem) {
+      watch("FAILED " + label + " after " + (Date.now() - began) +
+            "ms: " + (problem && problem.message ? problem.message : "?"));
       setLamp("dead", "offline");
       throw new Error("offline");
     });
@@ -99,7 +128,7 @@
     }
 
     beat += 1;
-    if (beat % 2 === 0) markSession();
+    if (beat % 8 === 0) alignMirror();
 
     if (seeking) return;
 
@@ -135,6 +164,10 @@
 
   function loadArt(position) {
     var box = $("art-box"), img = $("art");
+
+    box.classList.add("blank");
+    img.removeAttribute("src");
+
     img.onload = function () {
       box.classList.remove("blank");
       describe();
@@ -143,25 +176,41 @@
       box.classList.add("blank");
       describe();
     };
-    img.src = "api/cover?index=" + position + "&n=" + encodeURIComponent(knownTitle);
+    img.src = "api/cover?index=" + position + "&n=" + Date.now();
   }
 
   var facts = {};
 
+  var shown = "";
+
   function describe() {
     if (!("mediaSession" in navigator)) return;
-    var art = $("art-box").classList.contains("blank")
-      ? []
-      : [{ src: $("art").src, sizes: "512x512" }];
+
+    var art = $("art-box").classList.contains("blank") ? "" : $("art").src;
+    var title = facts.songname || knownTitle || "Winamp Remote";
+    var stamp = title + "|" + (facts.artist || "") + "|" + (facts.album || "") + "|" + art;
+
+    if (stamp === shown) return;
+    shown = stamp;
+
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: facts.songname || knownTitle || "Winamp",
+        title: title,
         artist: facts.artist || "",
         album: facts.album || "",
-        artwork: art
+        artwork: art ? [{ src: art, sizes: "512x512" }] : []
       });
       markSession();
     } catch (e) {}
+  }
+
+  function setPlaying(value) {
+    playing = value;
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = value ? "playing" : "paused";
+    }
+    anchorAt = Date.now();
+    markSession();
   }
 
   function loadDetails(position) {
@@ -193,23 +242,39 @@
     }).catch(function () {});
   }
 
+  var IDLE_HINT = "minutes";
+
   function paintSleep(info) {
-    var badge = $("sleep-left");
-    if (!badge) return;
-    if (!info || !info.active) {
-      badge.textContent = "";
+    var field = $("sleep-custom"), setter = $("sleep-set");
+    if (!field || !setter) return;
+
+    var live = !!(info && info.active);
+
+    if (!live) {
       Array.prototype.forEach.call(sleepPanel.querySelectorAll("button"), function (b) {
         b.setAttribute("aria-pressed", "false");
       });
+    }
+
+    sleepPanel.classList.toggle("armed", live);
+    field.disabled = live;
+    setter.disabled = live;
+
+    if (!live) {
+      field.placeholder = IDLE_HINT;
       return;
     }
-    badge.textContent = Math.ceil(info.left / 60) + " min left";
+
+    var minutes = Math.ceil(info.left / 60);
+    field.value = "";
+    field.placeholder = minutes + (minutes === 1 ? " minute left" : " minutes left");
   }
 
   function refresh() {
     return json("state").then(function (state) {
       listTotal = state.total;
       playing = state.mode === 1;
+      winampMode = state.mode;
       paintSleep(state.sleep);
 
       if (mode === "pc") {
@@ -224,7 +289,7 @@
           posbar.value = Math.min(anchorPos, posbar.max);
           paintBar(anchorPos);
         }
-        setTitle(fileTitle || state.title || "Winamp");
+        setTitle(fileTitle || state.title || "Winamp Remote");
       }
 
       if (!queueKicked) {
@@ -264,13 +329,17 @@
         }
       }
 
-      if (mode === "pc" && state.title !== knownTitle) {
+      if (mode === "pc" && (state.pos !== loadedFor || state.title !== knownTitle)) {
+        loadedFor = state.pos;
         knownTitle = state.title;
         fileTitle = "";
         loadDetails(state.pos);
       }
 
+      if (mode === "pc") alignMirror();
+
       markSession();
+      wireSession();
     }).catch(function () {
       setLamp("dead", "offline");
       if (mode === "pc") {
@@ -283,11 +352,63 @@
     });
   }
 
-  function silentLoop() {
-    if (silence) return silence;
+  var mine = 0, winampMode = -1;
 
-    var rate = 8000, seconds = 30;
-    var frames = rate * seconds;
+  function selfPlay() {
+    mine += 1;
+    return player.play().catch(function (problem) {
+      mine = Math.max(0, mine - 1);
+      watch("own play refused: " + problem.name);
+    });
+  }
+
+  function selfPause() {
+    mine += 1;
+    player.pause();
+  }
+
+  function ours() {
+    if (mine <= 0) return false;
+    mine -= 1;
+    return true;
+  }
+
+  var toldAt = -1, toldLen = -1;
+
+  function markSession() {
+    if (!("mediaSession" in navigator)) return;
+
+    navigator.mediaSession.playbackState =
+      mode === "phone" ? (player.paused ? "paused" : "playing")
+                       : (playing ? "playing" : "paused");
+
+    if (duration <= 0) return;
+
+    var spot = mode === "phone"
+      ? player.currentTime
+      : Math.min(playing ? anchorPos + (Date.now() - anchorAt) / 1000 : anchorPos, duration);
+
+    var place = Math.max(0, Math.min(spot, duration));
+    if (duration === toldLen && Math.abs(place - toldAt) < 2) return;
+
+    toldLen = duration;
+    toldAt = place;
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: duration,
+        position: place,
+        playbackRate: 1
+      });
+    } catch (e) {}
+  }
+
+  var hum = null;
+
+  function humTrack() {
+    if (hum) return hum;
+
+    var rate = 8000, seconds = 60, frames = rate * seconds;
     var buffer = new ArrayBuffer(44 + frames);
     var view = new DataView(buffer);
 
@@ -307,41 +428,53 @@
     view.setUint16(34, 8, true);
     ascii(36, "data");
     view.setUint32(40, frames, true);
-    for (var i = 0; i < frames; i++) view.setUint8(44 + i, 128);
 
-    silence = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
-    return silence;
+    for (var i = 0; i < frames; i++) {
+      view.setUint8(44 + i, 128 + (Math.sin(i / 40) > 0 ? 1 : 0));
+    }
+
+    hum = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+    watch("carrier built: " + seconds + "s, " + Math.round(frames / 1024) + " KB, no network");
+    return hum;
   }
 
-  function holdSession() {
-    if (mode !== "pc" || !player.paused) return;
-    holding = true;
-    player.loop = true;
-    player.volume = 1;
-    player.src = silentLoop();
-    player.play().catch(function () {});
+  var awake = false;
+
+  function wake() {
+    if (mode !== "pc") return;
+
+    if (player.src !== humTrack()) {
+      player.loop = true;
+      player.volume = 1;
+      player.src = hum;
+      watch("carrier attached at full volume, silent by content");
+    }
+
+    if (!player.paused) return;
+
+    selfPlay().then(function () {
+      awake = true;
+      watch("carrier playing, session live");
+      wireSession();
+      describe();
+      markSession();
+    }).catch(function (problem) {
+      watch("carrier refused: " + problem.name + " (needs a tap)");
+    });
   }
 
-  function keepAlive() {
-    if (!holding || mode !== "pc") return;
-    if (player.paused) player.play().catch(function () {});
-  }
+  function alignMirror() {
+    if (mode !== "pc" || !awake) return;
 
-  function markSession() {
-    if (!("mediaSession" in navigator)) return;
+    if (playing && player.paused) {
+      watch("align: winamp plays, carrier stopped -> starting");
+      selfPlay();
+      return;
+    }
 
-    navigator.mediaSession.playbackState = playing ? "playing" : "paused";
-
-    if (duration > 0) {
-      var spot = mode === "phone" ? player.currentTime
-        : Math.min(playing ? anchorPos + (Date.now() - anchorAt) / 1000 : anchorPos, duration);
-      try {
-        navigator.mediaSession.setPositionState({
-          duration: duration,
-          position: Math.max(0, Math.min(spot, duration)),
-          playbackRate: 1
-        });
-      } catch (e) {}
+    if (!playing && !player.paused) {
+      watch("align: winamp paused, carrier runs -> stopping");
+      selfPause();
     }
   }
 
@@ -367,18 +500,20 @@
     },
     next: function () {
       if (mode === "phone") return playIndex(Math.min(listPos + 1, listTotal - 1));
-      if (afterGuest()) return Promise.resolve();
+      if (afterGuest()) { watch("next: returning to playlist instead"); return Promise.resolve(); }
       return send("next");
     }
   };
 
   var names = { prev: "previous", play: "play", pause: "pause", stop: "stop", next: "next" };
 
+  var expects = { play: true, pause: false, stop: false };
+
   Array.prototype.forEach.call(document.querySelectorAll(".pads button"), function (b) {
     b.addEventListener("click", function () {
       var cmd = b.dataset.cmd;
       note(names[cmd]);
-      holdSession();
+      if (cmd in expects && mode === "pc") setPlaying(expects[cmd]);
       actions[cmd]().then(function () {
         if (mode === "pc") setTimeout(refresh, 350);
       }).catch(function () {});
@@ -413,8 +548,12 @@
     player.src = "api/stream?index=" + position;
     knownTitle = "";
     fileTitle = "";
+    loadedFor = -2;
     setTitle("track " + (position + 1));
-    return player.play().catch(function () {});
+    return player.play().then(function () {
+      wireSession();
+      describe();
+    }).catch(function () {});
   }
 
   posbar.addEventListener("pointerdown", function () { seeking = true; });
@@ -487,7 +626,6 @@
     li.dataset.index = String(position);
     b.addEventListener("click", function () {
       note("track " + (position + 1));
-      holdSession();
       if (mode === "phone") return playIndex(position);
       send("setplaylistpos", "index=" + position)
         .then(function () { return send("play"); })
@@ -680,9 +818,9 @@
     b.textContent = label;
     b.addEventListener("click", function () {
       if (kind === "file") {
-        holdSession();
         if (mode === "phone") {
           player.loop = false;
+          player.volume = Number(vol.value) / 100;
           player.src = "api/stream?path=" + encodeURIComponent(path);
           setTitle(label);
           player.play().catch(function () {});
@@ -749,17 +887,45 @@
     if (browsePanel.open && !browse.querySelector("ol")) openFolder("");
   });
 
-  Array.prototype.forEach.call(sleepPanel.querySelectorAll(".timers button"), function (b) {
-    b.addEventListener("click", function () {
-      var minutes = Number(b.dataset.min);
-      var call = minutes > 0 ? "sleep?action=arm&minutes=" + minutes : "sleep?action=cancel";
+  function armSleep(minutes, source) {
+    var call = minutes > 0 ? "sleep?action=arm&minutes=" + minutes : "sleep?action=cancel";
 
-      Array.prototype.forEach.call(sleepPanel.querySelectorAll(".timers button"), function (other) {
-        other.setAttribute("aria-pressed", String(other === b && minutes > 0));
-      });
-
-      json(call).then(paintSleep).catch(function () {});
+    Array.prototype.forEach.call(sleepPanel.querySelectorAll("button"), function (other) {
+      other.setAttribute("aria-pressed", String(other === source && minutes > 0));
     });
+
+    json(call).then(paintSleep).catch(function () {});
+  }
+
+  Array.prototype.forEach.call(sleepPanel.querySelectorAll(".timers button[data-min]"), function (b) {
+    b.addEventListener("click", function () {
+      $("sleep-custom").value = "";
+      armSleep(Number(b.dataset.min), b);
+    });
+  });
+
+  function armCustom() {
+    var field = $("sleep-custom");
+    var minutes = Math.round(Number(field.value));
+
+    if (!minutes || minutes < 1) {
+      field.focus();
+      return;
+    }
+
+    minutes = Math.min(minutes, 720);
+    field.value = minutes;
+    field.blur();
+    armSleep(minutes, $("sleep-set"));
+  }
+
+  $("sleep-set").addEventListener("click", armCustom);
+
+  $("sleep-custom").addEventListener("keydown", function (event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      armCustom();
+    }
   });
 
   function setMode(next) {
@@ -770,25 +936,29 @@
     $("mode-phone").setAttribute("aria-pressed", String(next === "phone"));
 
     if (next === "phone") {
-      holding = false;
+      awake = false;
+      mine = 0;
       player.pause();
       player.loop = false;
       player.removeAttribute("src");
       player.load();
-      vol.value = Math.round(player.volume * 100);
+      player.volume = 1;
+      vol.value = 100;
       showVol();
       setTitle("pick a track");
       setLamp("", "client idle");
       duration = 0;
       paintBar(0);
     } else {
-      holding = false;
+      awake = false;
+      mine = 0;
       player.pause();
       player.loop = false;
       player.removeAttribute("src");
       player.load();
+      player.volume = 1;
       knownTitle = "";
-      holdSession();
+      loadedFor = -2;
       text("getvolume").then(function (level) {
         var value = parseInt(level, 10);
         if (!isNaN(value)) { vol.value = value; showVol(); }
@@ -800,16 +970,86 @@
   $("mode-pc").addEventListener("click", function () { setMode("pc"); });
   $("mode-phone").addEventListener("click", function () { setMode("phone"); });
 
+  setInterval(function () {
+    if (mine > 0) mine = 0;
+  }, 5000);
+
   player.addEventListener("play", function () {
-    if (mode === "phone") setLamp("on", "playing on client");
+    if (mode === "phone") {
+      setLamp("on", "playing on client");
+      return;
+    }
+
+    if (ours() || !awake) return;
+
+    if (winampMode === 1) {
+      watch("carrier started, winamp already playing, nothing to do");
+      return;
+    }
+
+    var command = winampMode === 3 ? "pause" : "play";
+    watch("mirror -> winamp: resume via " + command + " (winamp mode " + winampMode + ")");
+    playing = true;
+    send(command).then(function () { setTimeout(refresh, 350); }).catch(function () {});
   });
 
   player.addEventListener("pause", function () {
-    if (mode === "phone" && !player.ended) setLamp("hold", "paused");
-    else keepAlive();
+    if (mode === "phone") {
+      if (!player.ended) setLamp("hold", "paused");
+      return;
+    }
+
+    if (ours() || !awake || player.ended) return;
+
+    if (winampMode !== 1) {
+      watch("carrier stopped, winamp not playing (mode " + winampMode + "), nothing to do");
+      return;
+    }
+
+    watch("mirror -> winamp: pause (winamp mode " + winampMode + ")");
+    playing = false;
+    send("pause").then(function () { setTimeout(refresh, 350); }).catch(function () {});
   });
 
-  player.addEventListener("ended", keepAlive);
+  ["play", "pause", "ended", "stalled", "suspend", "emptied", "error", "waiting"]
+    .forEach(function (kind) {
+      player.addEventListener(kind, function () {
+        watch("audio: " + kind + (player.error ? " code " + player.error.code : ""));
+      });
+    });
+
+  document.addEventListener("visibilitychange", function () {
+    watch("page " + (document.hidden ? "hidden" : "visible") +
+          " | audio " + (player.paused ? "paused" : "playing"));
+  });
+
+  document.addEventListener("freeze", function () { watch("PAGE FROZEN by browser"); });
+  document.addEventListener("resume", function () { watch("page resumed"); });
+
+  function dropSession() {
+    awake = false;
+    armed = -1;
+    try { player.pause(); } catch (e) {}
+
+    if (!("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = "none";
+      navigator.mediaSession.metadata = null;
+      ["play", "pause", "stop", "previoustrack", "nexttrack",
+       "seekbackward", "seekforward", "seekto"].forEach(function (key) {
+        navigator.mediaSession.setActionHandler(key, null);
+      });
+    } catch (e) {}
+  }
+
+  window.addEventListener("pagehide", function (event) {
+    watch("pagehide, persisted=" + event.persisted + " (session kept)");
+  });
+
+  window.addEventListener("beforeunload", function () {
+    watch("unloading, dropping session");
+    dropSession();
+  });
   player.addEventListener("ended", function () {
     if (mode === "phone") actions.next();
   });
@@ -832,58 +1072,87 @@
     return playing ? anchorPos + (Date.now() - anchorAt) / 1000 : anchorPos;
   }
 
-  if ("mediaSession" in navigator) {
-    var relay = function (run) {
+  var sessionReady = false;
+
+  function resumeCommand() {
+    return winampMode === 3 ? "pause" : "play";
+  }
+
+  function wireSession() {
+    if (sessionReady || !("mediaSession" in navigator)) return;
+
+    var act = function (name, run) {
       return function (event) {
-        try { run(event); } catch (e) {}
-        setTimeout(keepAlive, 60);
-        if (mode === "pc") setTimeout(refresh, 350);
+        watch("action: " + name + " (winamp mode " + winampMode + ")");
+        try { run(event); } catch (e) { watch("action threw: " + e.message); }
+        setTimeout(refresh, 400);
       };
     };
 
     var wire = {
-      play: relay(function () { actions.play().catch(function () {}); }),
-      pause: relay(function () { actions.pause().catch(function () {}); }),
-      stop: relay(function () { actions.stop().catch(function () {}); }),
-      previoustrack: relay(function () { actions.prev().catch(function () {}); }),
-      nexttrack: relay(function () { actions.next().catch(function () {}); }),
-      seekbackward: relay(function (event) { seekTo(here() - ((event && event.seekOffset) || 10)); }),
-      seekforward: relay(function (event) { seekTo(here() + ((event && event.seekOffset) || 10)); }),
-      seekto: relay(function (event) { if (event && event.seekTime != null) seekTo(event.seekTime); })
+      play: act("play", function () {
+        setPlaying(true);
+        if (winampMode === 1) return;
+        send(resumeCommand()).catch(function () {});
+      }),
+      pause: act("pause", function () {
+        setPlaying(false);
+        if (winampMode !== 1) return;
+        send("pause").catch(function () {});
+      }),
+      stop: act("stop", function () {
+        setPlaying(false);
+        send("stop").catch(function () {});
+      }),
+      previoustrack: act("previoustrack", function () { actions.prev().catch(function () {}); }),
+      nexttrack: act("nexttrack", function () { actions.next().catch(function () {}); }),
+      seekbackward: act("seekbackward", function (event) {
+        seekTo(here() - ((event && event.seekOffset) || 10));
+      }),
+      seekforward: act("seekforward", function (event) {
+        seekTo(here() + ((event && event.seekOffset) || 10));
+      }),
+      seekto: act("seekto", function (event) {
+        if (event && event.seekTime != null) seekTo(event.seekTime);
+      })
     };
+
+    var good = 0, bad = [];
     Object.keys(wire).forEach(function (key) {
-      try { navigator.mediaSession.setActionHandler(key, wire[key]); }
-      catch (e) {}
+      try {
+        navigator.mediaSession.setActionHandler(key, wire[key]);
+        good += 1;
+      } catch (e) {
+        bad.push(key);
+      }
     });
+
+    sessionReady = true;
+    watch("handlers set once: " + good + (bad.length ? ", refused: " + bad.join(",") : ""));
   }
 
-  var isDesktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  var isDesktop = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   if (isDesktop) {
-    vol.addEventListener('wheel', function(e) {
-      e.preventDefault();
-      var step = 2;
-      var delta = e.deltaY > 0 ? -step : step;
+    vol.addEventListener("wheel", function (event) {
+      event.preventDefault();
+      var delta = event.deltaY > 0 ? -2 : 2;
 
       vol.value = Math.max(0, Math.min(100, Number(vol.value) + delta));
       showVol();
       pushVolume();
     }, { passive: false });
 
-    posbar.addEventListener('wheel', function(e) {
-      e.preventDefault();
-      var step = 5;
-      var delta = e.deltaY > 0 ? -step : step;
-
-      var currentPos = here();
-      seekTo(currentPos + delta);
+    posbar.addEventListener("wheel", function (event) {
+      if (posbar.disabled) return;
+      event.preventDefault();
+      seekTo(here() + (event.deltaY > 0 ? -5 : 5));
     }, { passive: false });
   }
 
   ["pointerdown", "keydown"].forEach(function (kind) {
-    document.addEventListener(kind, function once() {
-      document.removeEventListener(kind, once);
-      holdSession();
+    document.addEventListener(kind, function () {
+      if (!awake) wake();
     });
   });
 
@@ -909,18 +1178,15 @@
     switch (event.key) {
       case " ":
         note(playing ? "pause" : "play");
-        holdSession();
         (playing ? actions.pause() : actions.play());
         if (mode === "pc") setTimeout(refresh, 350);
         break;
       case "ArrowLeft":
         note("previous");
-        holdSession();
         actions.prev();
         break;
       case "ArrowRight":
         note("next");
-        holdSession();
         actions.next();
         break;
       case "ArrowUp":

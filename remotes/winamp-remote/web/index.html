@@ -131,26 +131,33 @@
         <button data-min="90">90</button>
         <button data-min="0" class="off">Off</button>
       </div>
-      <div class="strip bare">
-        <span>Minutes, then a slow fade to silence</span>
-        <span class="fill"></span>
-        <span id="sleep-left"></span>
+      <div class="custom">
+        <input type="number" id="sleep-custom" min="1" max="720" step="1"
+               inputmode="numeric" placeholder="minutes"
+               aria-label="Custom minutes">
+        <button id="sleep-set" title="Fades the volume out, then stops the player">Set</button>
       </div>
     </div>
   </details>
 
-  <section class="win keys">
-    <div class="bar">
+  <details class="win keys" id="keys-panel" open>
+    <summary class="bar">
       <h2>Shortcuts</h2>
       <span class="fill"></span>
-    </div>
+      <span class="knob" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <rect x="3.5" y="7.25" width="9" height="1.5" rx=".75"/>
+          <rect class="stem" x="7.25" y="3.5" width="1.5" height="9" rx=".75"/>
+        </svg>
+      </span>
+    </summary>
     <dl class="keymap">
       <dt><b>Space</b></dt><dd>play or pause</dd>
       <dt><b>&larr;</b> <b>&rarr;</b></dt><dd>previous or next track</dd>
       <dt><b>&uarr;</b> <b>&darr;</b></dt><dd>volume</dd>
       <dt><b>/</b></dt><dd>jump to search</dd>
     </dl>
-  </section>
+  </details>
 
 </div>
 
