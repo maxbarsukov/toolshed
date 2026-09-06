@@ -11,12 +11,12 @@ tags, cover art, search, folder browsing and a sleep timer.
 <table>
   <tr>
     <td align="center">
-      <img src="docs/screenshot-desktop.png" alt="The remote on a desktop browser" width="475"/>
+      <img src="docs/screenshot-desktop.png" alt="The remote on a desktop browser" width="713"/>
       <br>
       <em>Desktop</em>
     </td>
     <td align="center">
-      <img src="docs/screenshot-mobile.png" alt="The remote on a mobile browser" width="95"/>
+      <img src="docs/screenshot-mobile.png" alt="The remote on a mobile browser" width="157"/>
       <br>
       <em>Mobile</em>
     </td>
