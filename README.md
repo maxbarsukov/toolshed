@@ -8,6 +8,7 @@ A grab-bag of scripts and small tools I've written or relied on.
 |---|---|
 | [`save-editors/`](./save-editors/) | Save-file editors for various games |
 | [`downloaders/`](./downloaders/) | Scripts that pull files down from a site or service |
+| [`remotes/`](./remotes/) | Remote controls for programs running on another machine |
 
 ## Using anything here
 

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<title>Winamp Remote</title>
+<meta name="description" content="Control Winamp on your computer from any device on the same network, or stream its library here.">
+<meta name="application-name" content="Winamp Remote">
+<meta name="author" content="maxbarsukov">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f1418">
+<meta name="format-detection" content="telephone=no">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Winamp Remote">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Winamp Remote">
+<meta property="og:description" content="Control Winamp on your computer from any device on the same network.">
+<meta property="og:image" content="icons/maskable-512.png">
+
+<link rel="icon" href="icons/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="rack">
+
+<div class="col left">
+
+  <section class="win main">
+    <div class="bar">
+      <h2>Winamp</h2>
+      <span class="fill"></span>
+      <div class="seg" role="group" aria-label="Playback target">
+        <button id="mode-pc" class="on" aria-pressed="true">Server</button>
+        <button id="mode-phone" aria-pressed="false">Client</button>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="screen">
+        <div class="head">
+          <div class="time" id="time">0:00</div>
+          <div class="marquee"><span class="title" id="title">Winamp</span></div>
+        </div>
+        <div class="flags">
+          <span class="lamp" id="lamp"></span>
+          <span id="flags">connecting</span>
+        </div>
+        <input type="range" class="posbar" id="posbar" min="0" max="100" value="0" aria-label="Position" disabled>
+      </div>
+
+      <div class="pads">
+        <button data-cmd="prev" aria-label="Previous track">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M6 5h2.4v14H6zM20 5v14l-10-7z"/></svg>
+        </button>
+        <button data-cmd="play" aria-label="Play" class="go">
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>
+        </button>
+        <button data-cmd="pause" aria-label="Pause">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg>
+        </button>
+        <button data-cmd="stop" aria-label="Stop" class="halt">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
+        </button>
+        <button data-cmd="next" aria-label="Next track">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M15.6 5H18v14h-2.4zM4 5l10 7-10 7z"/></svg>
+        </button>
+      </div>
+
+      <div class="knobs">
+        <span class="cap">Vol</span>
+        <input type="range" class="vol" id="vol" min="0" max="100" step="2" value="50" aria-label="Volume">
+        <output id="volout" for="vol">50%</output>
+        <button id="shuffle" class="light" aria-pressed="false" aria-label="Shuffle" title="Shuffle">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M10.6 9.2L5.4 4 4 5.4l5.2 5.2 1.4-1.4zM14.5 4l2 2L4 18.6 5.4 20 18 7.5l2 2V4h-5.5zm.3 9.4l-1.4 1.4 3.1 3.1-2 2H20v-5.5l-2 2-3.2-3z"/></svg>
+        </button>
+        <button id="repeat" class="light" aria-pressed="false" aria-label="Repeat" title="Repeat">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="win">
+    <div class="bar">
+      <h2>Track info</h2>
+      <span class="fill"></span>
+    </div>
+    <div class="body sleeve">
+      <div class="art blank" id="art-box"><img id="art" alt=""></div>
+      <dl class="card">
+        <dt>Title</dt><dd id="tag-title"></dd>
+        <dt>Artist</dt><dd id="tag-artist"></dd>
+        <dt>Album</dt><dd id="tag-album"></dd>
+        <dt>Year</dt><dd id="tag-year"></dd>
+        <dt>Genre</dt><dd id="tag-genre"></dd>
+          <dt>Rating</dt><dd id="tag-rating"></dd>
+      </dl>
+    </div>
+  </section>
+
+  <details class="win" id="sleep-panel">
+    <summary class="bar">
+      <h2>Sleep timer</h2>
+      <span class="fill"></span>
+      <span class="knob" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <rect x="3.5" y="7.25" width="9" height="1.5" rx=".75"/>
+          <rect class="stem" x="7.25" y="3.5" width="1.5" height="9" rx=".75"/>
+        </svg>
+      </span>
+    </summary>
+    <div class="body">
+      <div class="timers">
+        <button data-min="15">15</button>
+        <button data-min="30">30</button>
+        <button data-min="45">45</button>
+        <button data-min="60">60</button>
+        <button data-min="90">90</button>
+        <button data-min="0" class="off">Off</button>
+      </div>
+      <div class="strip bare">
+        <span>Minutes, then a slow fade to silence</span>
+        <span class="fill"></span>
+        <span id="sleep-left"></span>
+      </div>
+    </div>
+  </details>
+
+  <section class="win keys">
+    <div class="bar">
+      <h2>Shortcuts</h2>
+      <span class="fill"></span>
+    </div>
+    <dl class="keymap">
+      <dt><b>Space</b></dt><dd>play or pause</dd>
+      <dt><b>&larr;</b> <b>&rarr;</b></dt><dd>previous or next track</dd>
+      <dt><b>&uarr;</b> <b>&darr;</b></dt><dd>volume</dd>
+      <dt><b>/</b></dt><dd>jump to search</dd>
+    </dl>
+  </section>
+
+</div>
+
+<div class="col right">
+
+  <details class="win" id="queue-panel" open>
+    <summary class="bar">
+      <h2>Playlist editor</h2>
+      <span class="fill"></span>
+      <span class="knob" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <rect x="3.5" y="7.25" width="9" height="1.5" rx=".75"/>
+          <rect class="stem" x="7.25" y="3.5" width="1.5" height="9" rx=".75"/>
+        </svg>
+      </span>
+    </summary>
+
+    <div class="body flush">
+      <div class="finder">
+        <input type="search" id="search" placeholder="Search all tracks" autocomplete="off" aria-label="Search playlist">
+        <button id="search-clear" aria-label="Clear search" title="Clear search">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <rect x="3" y="7.25" width="10" height="1.5" rx=".75" transform="rotate(45 8 8)"/>
+            <rect x="3" y="7.25" width="10" height="1.5" rx=".75" transform="rotate(-45 8 8)"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="queue" id="queue">
+        <p class="empty">Waiting for the player…</p>
+      </div>
+
+      <div class="strip">
+        <span id="queue-total"></span>
+        <span class="fill"></span>
+        <span id="queue-count"></span>
+      </div>
+      <p class="hint" id="index-hint"></p>
+    </div>
+  </details>
+
+  <details class="win" id="browse-panel">
+    <summary class="bar">
+      <h2>Media library</h2>
+      <span class="fill"></span>
+      <span class="knob" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <rect x="3.5" y="7.25" width="9" height="1.5" rx=".75"/>
+          <rect class="stem" x="7.25" y="3.5" width="1.5" height="9" rx=".75"/>
+        </svg>
+      </span>
+    </summary>
+    <div class="body flush">
+      <div class="crumb">
+        <button id="browse-up" aria-label="Up one folder" title="Up one folder" disabled>
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true">
+            <path d="M8 3l5 5-1.1 1.1L8.8 6v7H7.2V6L4.1 9.1 3 8z"/>
+          </svg>
+        </button>
+        <span id="browse-where"></span>
+      </div>
+      <div class="queue" id="browse">
+        <p class="empty">Opening this window reads the music folder.</p>
+      </div>
+    </div>
+  </details>
+
+</div>
+
+</main>
+
+<audio id="player" preload="none"></audio>
+<script src="app.js"></script>
+</body>
+</html>
